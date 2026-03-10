@@ -63,14 +63,14 @@ while True:
     prices = get_stablecoin_prices()
     USDT, USDC, DAI = prices['USDT'], prices['USDC'], prices['DAI']
 
-    # record prices
-   new_row = pd.DataFrame([{
-    'time': now,
-    'USDT': USDT,
-    'USDC': USDC,
-    'DAI': DAI
-}])
-st.session_state.price_df = pd.concat([st.session_state.price_df, new_row], ignore_index=True)
+    # Add new row to the price dataframe
+    new_row = pd.DataFrame([{
+        'time': now,
+        'USDT': USDT,
+        'USDC': USDC,
+        'DAI': DAI
+    }])
+    st.session_state.price_df = pd.concat([st.session_state.price_df, new_row], ignore_index=True)
 
     # -------------------
     # Drift alerts
@@ -95,7 +95,7 @@ st.session_state.price_df = pd.concat([st.session_state.price_df, new_row], igno
     )
     move = 0.01*total_value
     # simple rotation USDT → USDC → DAI
-    if st.session_state.portfolio['USDT']*USDT>0:
+    if st.session_state.portfolio['USDT']*USDT > 0:
         sell = min(st.session_state.portfolio['USDT'], move/USDT)
         st.session_state.portfolio['USDT'] -= sell
         st.session_state.portfolio['USDC'] += sell
@@ -123,4 +123,3 @@ st.session_state.price_df = pd.concat([st.session_state.price_df, new_row], igno
     log_box.text("\n".join(st.session_state.log[-10:]))
 
     time.sleep(interval_minutes*60)
-
