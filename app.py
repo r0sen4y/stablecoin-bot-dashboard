@@ -64,12 +64,13 @@ while True:
     USDT, USDC, DAI = prices['USDT'], prices['USDC'], prices['DAI']
 
     # record prices
-    st.session_state.price_df = st.session_state.price_df.append({
-        'time': now,
-        'USDT': USDT,
-        'USDC': USDC,
-        'DAI': DAI
-    }, ignore_index=True)
+   new_row = pd.DataFrame([{
+    'time': now,
+    'USDT': USDT,
+    'USDC': USDC,
+    'DAI': DAI
+}])
+st.session_state.price_df = pd.concat([st.session_state.price_df, new_row], ignore_index=True)
 
     # -------------------
     # Drift alerts
@@ -122,3 +123,4 @@ while True:
     log_box.text("\n".join(st.session_state.log[-10:]))
 
     time.sleep(interval_minutes*60)
+
