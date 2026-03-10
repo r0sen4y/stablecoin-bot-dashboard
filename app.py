@@ -1,8 +1,8 @@
 import streamlit as st
-import ccxt
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import requests
 from datetime import datetime
 import time
 
@@ -12,30 +12,36 @@ import time
 st.set_page_config(layout="wide")
 st.title("Live Stablecoin Simulation Dashboard")
 st.markdown("""
-Simulates low‑risk stablecoin portfolio (USDT, USDC, DAI)  
-with minor automated trades and drift alerts.
+Simulates a virtual portfolio of stablecoins (USDT, USDC, DAI)  
+with minor low-risk trades and live real-market prices.
 """)
 
 # -------------------
 # Simulation Parameters
 # -------------------
 interval_minutes = 5
-drift_threshold = 0.02  # 2%
-
-# -------------------
-# Initialize Exchange
-# -------------------
-exchange = ccxt.kraken()
+drift_threshold = 0.02  # 2% drift triggers alert
 
 # -------------------
 # Helper Functions
 # -------------------
-def fetch_price(symbol):
+def get_stablecoin_prices():
+    url = "https://api.coingecko.com/api/v3/simple/price"
+    params = {
+        "ids": "tether,usd-coin,dai",
+        "vs_currencies": "eur"
+    }
     try:
-        ticker = exchange.fetch_ticker(symbol)
-        return ticker['last']
+        response = requests.get(url, params=params)
+        data = response.json()
+        return {
+            "usdt": data["tether"]["eur"],
+            "usdc": data["usd-coin"]["eur"],
+            "dai": data["dai"]["eur"]
+        }
     except Exception:
-        return None
+        # fallback to 1.0 if API fails
+        return {"usdt": 1.0, "usdc": 1.0, "dai": 1.0}
 
 # -------------------
 # Data Storage
@@ -52,19 +58,19 @@ alert_box = st.empty()
 log_box = st.empty()
 
 # -------------------
-# Main Live Loop (runs every 5 minutes)
+# Main Live Loop
 # -------------------
 while True:
     now = datetime.now()
-    usdt = fetch_price('USDT/EUR')
-    usdc = fetch_price('USDC/EUR')
-    dai  = fetch_price('DAI/EUR')
-    
+    prices = get_stablecoin_prices()
+    usdt, usdc, dai = prices['usdt'], prices['usdc'], prices['dai']
+
+    # record prices
     st.session_state.price_df = st.session_state.price_df.append({
         'time': now,
-        'usdt': usdt or 1.0,
-        'usdc': usdc or 1.0,
-        'dai': dai or 1.0
+        'usdt': usdt,
+        'usdc': usdc,
+        'dai': dai
     }, ignore_index=True)
 
     # -------------------
@@ -72,7 +78,7 @@ while True:
     # -------------------
     alerts = []
     for coin, price in [('USDT',usdt), ('USDC',usdc), ('DAI',dai)]:
-        if price and abs(price - 1) > drift_threshold:
+        if abs(price - 1) > drift_threshold:
             alerts.append(f"{coin} drift {price:.3f}")
             st.session_state.log.append(f"{now} ALERT: {coin} drift {price:.3f}")
 
@@ -82,30 +88,27 @@ while True:
         alert_box.success("No significant drift detected.")
 
     # -------------------
-    # Minor simulated trades (between coins)
+    # Minor simulated trades
     # -------------------
-    # Random tiny moves: 1‑2% between assets
     total_value = (
-        st.session_state.portfolio['usdt'] * (usdt or 1.0) +
-        st.session_state.portfolio['usdc'] * (usdc or 1.0) +
-        st.session_state.portfolio['dai']  * (dai  or 1.0)
+        st.session_state.portfolio['usdt'] * usdt +
+        st.session_state.portfolio['usdc'] * usdc +
+        st.session_state.portfolio['dai']  * dai
     )
-    # Simple rotation logic
-    if usdt and usdc and dai:
-        # rotate 1% between coins
-        move = 0.01 * total_value
-        # example cycle: USDT → USDC → DAI
-        if st.session_state.portfolio['usdt']*usdt > 0:
-            sell = min(st.session_state.portfolio['usdt'], move/usdt)
-            st.session_state.portfolio['usdt'] -= sell
-            st.session_state.portfolio['usdc'] += sell
-            st.session_state.log.append(f"{now} TRADE: {sell:.2f} USDT → USDC")
+
+    # Simple rotation logic: move 1% of total portfolio between coins
+    move = 0.01 * total_value
+    if st.session_state.portfolio['usdt']*usdt > 0:
+        sell = min(st.session_state.portfolio['usdt'], move/usdt)
+        st.session_state.portfolio['usdt'] -= sell
+        st.session_state.portfolio['usdc'] += sell
+        st.session_state.log.append(f"{now} TRADE: {sell:.2f} USDT → USDC")
 
     # record portfolio total
     total_value = (
-        st.session_state.portfolio['usdt'] * (usdt or 1.0) +
-        st.session_state.portfolio['usdc'] * (usdc or 1.0) +
-        st.session_state.portfolio['dai']  * (dai  or 1.0)
+        st.session_state.portfolio['usdt'] * usdt +
+        st.session_state.portfolio['usdc'] * usdc +
+        st.session_state.portfolio['dai']  * dai
     )
     st.session_state.portfolio['value_history'].append(total_value)
 
@@ -113,7 +116,7 @@ while True:
     # Plotting
     # -------------------
     df = st.session_state.price_df.copy()
-    fig, ax1 = plt.subplots()
+    fig, ax1 = plt.subplots(figsize=(12,6))
     ax1.plot(df['time'], df['usdt'], label="USDT Price")
     ax1.plot(df['time'], df['usdc'], label="USDC Price")
     ax1.plot(df['time'], df['dai'],  label="DAI Price")
@@ -126,7 +129,6 @@ while True:
     ax2.legend(loc='upper right')
 
     placeholder_chart.pyplot(fig)
-
     log_box.text("\n".join(st.session_state.log[-10:]))
 
     time.sleep(interval_minutes * 60)
